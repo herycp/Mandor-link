@@ -16,7 +16,7 @@ from bs4 import BeautifulSoup
 # ============================================================
 URLS = [
     "https://9tsu.one/douga/34833.html",
-    "https://9tsu.vip/125726.html",
+    "https://9tsu.vip/125726.html",        # ← PERBAIKI: satu titik
     "https://9tsu.in/douga/126009.html",
 ]
 
@@ -74,6 +74,7 @@ except Exception as e:
 def extract_domain(page_url, retries=3):
     for attempt in range(retries):
         try:
+            print(f"  📡 Mencoba {page_url} (percobaan {attempt+1}/{retries})...")
             resp = requests.get(page_url, timeout=15, headers=HEADERS)
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, "html.parser")
@@ -94,7 +95,8 @@ def extract_domain(page_url, retries=3):
             return domain
         except requests.exceptions.RequestException as e:
             print(f"⚠️ Percobaan {attempt+1}/{retries} gagal untuk {page_url}: {e}")
-            time.sleep(2)  # jeda sebelum retry
+            if attempt < retries - 1:
+                time.sleep(2)  # jeda sebelum retry
     return None
 
 # ============================================================
