@@ -64,7 +64,6 @@ except Exception as e:
 
 # ============================================================
 # DOWNLOAD HTML MENGGUNAKAN CLOUDSCRAPER + CURL FALLBACK
-# Diadaptasi dari struktur crawl_9tsu.py
 # ============================================================
 def download_html(url, referer=None):
     headers = {
@@ -92,7 +91,6 @@ def download_html(url, referer=None):
         
         if response.status_code == 200:
             raw = response.content
-            # Penanganan dekompresi gzip manual
             if len(raw) >= 2 and raw[0] == 0x1F and raw[1] == 0x8B:
                 try:
                     raw = gzip.decompress(raw)
@@ -110,7 +108,7 @@ def download_html(url, referer=None):
     except Exception as e:
         print(f"   ⚠️ Cloudscraper error: {e}")
 
-    # 2. Fallback menggunakan command-line Curl jika mendapat 403
+    # 2. Fallback menggunakan command-line Curl
     print("   ⚠️ Beralih ke curl fallback...")
     try:
         cmd = [
@@ -130,7 +128,6 @@ def download_html(url, referer=None):
         result = subprocess.run(cmd, capture_output=True, timeout=35)
         if result.returncode == 0:
             content = result.stdout
-            # Penanganan dekompresi gzip manual untuk Curl
             if len(content) >= 2 and content[0] == 0x1F and content[1] == 0x8B:
                 try:
                     content = gzip.decompress(content)
@@ -282,9 +279,12 @@ for repo_url in TARGET_REPOS:
     files_upd = 0
     dbs_upd = 0
 
+    # PENCARIAN FILE DIPERBARUI: Mampu menjangkau .github tanpa terhalang filter .git
     for root, dirs, files in os.walk('.'):
-        if '.git' in root:
-            continue
+        # Hapus folder .git dari penelusuran agar tidak ikut diproses
+        if '.git' in dirs:
+            dirs.remove('.git')
+            
         for file in files:
             filepath = os.path.join(root, file)
             if file.endswith(('.db','.sqlite','.sqlite3')):
