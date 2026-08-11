@@ -6,6 +6,7 @@ import sys
 import subprocess
 import tempfile
 import sqlite3
+import time
 from urllib.parse import urlparse
 import requests
 from bs4 import BeautifulSoup
@@ -29,6 +30,18 @@ TARGET_REPOS = [
 JSON_FILE = "link-sekarang.json"
 PAT = os.environ.get("PAT_TOKEN")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
+
+# ============================================================
+# HEADER UNTUK MENGHINDARI 403
+# ============================================================
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+}
 
 # ============================================================
 # VALIDASI
@@ -56,24 +69,33 @@ except Exception as e:
     sys.exit(1)
 
 # ============================================================
-# EKSTRAK DOMAIN DARI URL
+# EKSTRAK DOMAIN DARI URL (dengan retry dan header)
 # ============================================================
-def extract_domain(page_url):
-    try:
-        resp = requests.get(page_url, timeout=15)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
-        player = soup.find("div", id="player-embed")
-        if not player:
-            return None
-        iframe = player.find("iframe")
-        if not iframe or not iframe.get("src"):
-            return None
-        parsed = urlparse(iframe["src"])
-        return parsed.netloc or None
-    except Exception as e:
-        print(f"⚠️ Gagal proses {page_url}: {e}")
-        return None
+def extract_domain(page_url, retries=3):
+    for attempt in range(retries):
+        try:
+            resp = requests.get(page_url, timeout=15, headers=HEADERS)
+            resp.raise_for_status()
+            soup = BeautifulSoup(resp.text, "html.parser")
+            player = soup.find("div", id="player-embed")
+            if not player:
+                print(f"⚠️ Tidak ditemukan div#player-embed di {page_url}")
+                return None
+            iframe = player.find("iframe")
+            if not iframe or not iframe.get("src"):
+                print(f"⚠️ Tidak ditemukan iframe di dalam div#player-embed di {page_url}")
+                return None
+            src = iframe["src"]
+            parsed = urlparse(src)
+            domain = parsed.netloc
+            if not domain:
+                print(f"⚠️ Domain kosong dari src: {src}")
+                return None
+            return domain
+        except requests.exceptions.RequestException as e:
+            print(f"⚠️ Percobaan {attempt+1}/{retries} gagal untuk {page_url}: {e}")
+            time.sleep(2)  # jeda sebelum retry
+    return None
 
 # ============================================================
 # CARI DOMAIN BARU
