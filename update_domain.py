@@ -7,15 +7,20 @@ import subprocess
 import tempfile
 import sqlite3
 import time
+import gzip
 from urllib.parse import urlparse
-import requests
 from bs4 import BeautifulSoup
+
+try:
+    import cloudscraper
+except ImportError:
+    print("❌ ERROR: Library cloudscraper belum diinstal. Jalankan: pip install cloudscraper")
+    sys.exit(1)
 
 # ============================================================
 # KONFIGURASI
 # ============================================================
 URLS = [
-    "https://9tsu.in/douga/125726.html",
     "https://9tsu.one/douga/34833.html",
     "https://9tsu.vip/125726.html",
     "https://9tsu.in/douga/126009.html",
@@ -58,79 +63,133 @@ except Exception as e:
     sys.exit(1)
 
 # ============================================================
-# BUAT SESSION DENGAN HEADER NATURAL
+# DOWNLOAD HTML MENGGUNAKAN CLOUDSCRAPER + CURL FALLBACK
+# Diadaptasi dari struktur crawl_9tsu.py
 # ============================================================
-def create_session():
-    session = requests.Session()
-    session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        # Disesuaikan: Hanya menerima kompresi yang didukung penuh oleh BeautifulSoup/requests bawaan
-        'Accept-Encoding': 'gzip, deflate',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        # Disesuaikan: Header Sec-Fetch dihapus agar tidak berkonflik saat disuntikkan Referer nanti
-    })
-    return session
+def download_html(url, referer=None):
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9",
+        "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Accept-Encoding": "identity",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Cache-Control": "max-age=0",
+    }
+    if referer:
+        headers["Referer"] = referer
+
+    # 1. Mencoba dengan Cloudscraper
+    try:
+        scraper = cloudscraper.create_scraper(
+            browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False},
+            delay=True,
+            interpreter='native'
+        )
+        scraper.headers.update(headers)
+        
+        response = scraper.get(url, timeout=40)
+        
+        if response.status_code == 200:
+            raw = response.content
+            # Penanganan dekompresi gzip manual
+            if len(raw) >= 2 and raw[0] == 0x1F and raw[1] == 0x8B:
+                try:
+                    raw = gzip.decompress(raw)
+                except:
+                    pass
+            try:
+                html = raw.decode('utf-8')
+            except:
+                html = raw.decode('latin-1', errors='ignore')
+                
+            if html and len(html) > 100:
+                return html, 200
+        elif response.status_code != 403:
+            return None, response.status_code
+    except Exception as e:
+        print(f"   ⚠️ Cloudscraper error: {e}")
+
+    # 2. Fallback menggunakan command-line Curl jika mendapat 403
+    print("   ⚠️ Beralih ke curl fallback...")
+    try:
+        cmd = [
+            'curl', '-s', '-L',
+            '-H', f'User-Agent: {headers["User-Agent"]}',
+            '-H', f'Accept: {headers["Accept"]}',
+            '-H', f'Accept-Language: {headers["Accept-Language"]}',
+            '-H', f'Accept-Encoding: {headers["Accept-Encoding"]}',
+            '-H', f'Connection: {headers["Connection"]}',
+            '-H', f'Upgrade-Insecure-Requests: {headers["Upgrade-Insecure-Requests"]}'
+        ]
+        if referer:
+            cmd.extend(['-H', f'Referer: {referer}'])
+            
+        cmd.extend(['--max-time', '30', url])
+        
+        result = subprocess.run(cmd, capture_output=True, timeout=35)
+        if result.returncode == 0:
+            content = result.stdout
+            # Penanganan dekompresi gzip manual untuk Curl
+            if len(content) >= 2 and content[0] == 0x1F and content[1] == 0x8B:
+                try:
+                    content = gzip.decompress(content)
+                except:
+                    pass
+            try:
+                html = content.decode('utf-8')
+            except:
+                html = content.decode('latin-1', errors='ignore')
+                
+            if html and len(html) > 100:
+                return html, 200
+            else:
+                return None, 403
+        else:
+            return None, result.returncode
+    except Exception as e:
+        print(f"   ❌ Curl fallback error: {e}")
+        return None, 0
 
 # ============================================================
-# EKSTRAK DOMAIN DARI URL (dengan session & cookie)
+# EKSTRAK DOMAIN
 # ============================================================
 def extract_domain(page_url, retries=3):
-    # Parse domain utama untuk referer
     parsed = urlparse(page_url)
     base_url = f"{parsed.scheme}://{parsed.netloc}"
 
-    session = create_session()
-
-    # Langkah 1: Kunjungi halaman utama untuk mendapatkan cookie
-    try:
-        print(f"  🍪 Mengambil cookie dari {base_url}...")
-        session.get(base_url, timeout=10)
-    except Exception as e:
-        print(f"  ⚠️ Gagal ambil cookie: {e}")
-
-    # Langkah 2: Akses URL target dengan referer
-    session.headers.update({'Referer': base_url})
-
     for attempt in range(retries):
-        try:
-            print(f"  📡 Mencoba {page_url} (percobaan {attempt+1}/{retries})...")
-            resp = session.get(page_url, timeout=20, allow_redirects=True)
-            print(f"     Status: {resp.status_code}")
+        print(f"  📡 Mencoba {page_url} (percobaan {attempt+1}/{retries})...")
+        
+        html, status = download_html(page_url, referer=base_url)
 
-            if resp.status_code == 403:
-                print("     ⚠️ 403 - coba refresh cookie...")
-                # Refresh cookie dengan kunjungi ulang halaman utama
-                session.get(base_url, timeout=10)
-                if attempt < retries - 1:
-                    time.sleep(2)
-                    continue
-                else:
-                    break
-
-            resp.raise_for_status()
-            soup = BeautifulSoup(resp.text, "html.parser")
+        if status == 200 and html:
+            soup = BeautifulSoup(html, "html.parser")
             player = soup.find("div", id="player-embed")
+            
             if not player:
                 print("⚠️ Tidak ditemukan div#player-embed")
                 return None
+                
             iframe = player.find("iframe")
             if not iframe or not iframe.get("src"):
                 print("⚠️ Tidak ditemukan iframe")
                 return None
+                
             src = iframe["src"]
             parsed_src = urlparse(src)
             domain = parsed_src.netloc
+            
             if not domain:
                 print("⚠️ Domain kosong")
                 return None
+                
             return domain
-        except requests.exceptions.RequestException as e:
-            print(f"⚠️ Percobaan {attempt+1}/{retries} gagal: {e}")
+        else:
+            print(f"     ⚠️ Status HTTP: {status}")
             if attempt < retries - 1:
-                time.sleep(3)
+                time.sleep(3 + attempt * 2)
+                
     return None
 
 # ============================================================
