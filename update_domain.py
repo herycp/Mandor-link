@@ -15,6 +15,7 @@ from bs4 import BeautifulSoup
 # KONFIGURASI
 # ============================================================
 URLS = [
+    "https://9tsu.in/douga/125726.html",
     "https://9tsu.one/douga/34833.html",
     "https://9tsu.vip/125726.html",
     "https://9tsu.in/douga/126009.html",
