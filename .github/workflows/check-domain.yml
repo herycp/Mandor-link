@@ -1,21 +1,20 @@
-name: Update Domain (Domain First, Base Second)
+name: Update Domain
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *'   # setiap 6 jam
+    - cron: '0 */6 * * *'
 
 jobs:
   update:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout current repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
@@ -24,7 +23,7 @@ jobs:
         run: |
           pip install requests beautifulsoup4
 
-      - name: Run update script
+      - name: Run
         env:
           PAT_TOKEN: ${{ secrets.TARGET_REPO_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
