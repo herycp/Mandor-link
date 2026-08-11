@@ -15,7 +15,6 @@ from bs4 import BeautifulSoup
 # KONFIGURASI
 # ============================================================
 URLS = [
-    "https://9tsu.in/douga/125726.html",
     "https://9tsu.one/douga/34833.html",
     "https://9tsu.vip/125726.html",
     "https://9tsu.in/douga/126009.html",
@@ -58,22 +57,19 @@ except Exception as e:
     sys.exit(1)
 
 # ============================================================
-# BUAT SESSION DENGAN HEADER LENGKAP + COOKIE
+# BUAT SESSION DENGAN HEADER NATURAL
 # ============================================================
 def create_session():
     session = requests.Session()
     session.headers.update({
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
+        # Disesuaikan: Hanya menerima kompresi yang didukung penuh oleh BeautifulSoup/requests bawaan
+        'Accept-Encoding': 'gzip, deflate',
         'Connection': 'keep-alive',
         'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Cache-Control': 'max-age=0',
+        # Disesuaikan: Header Sec-Fetch dihapus agar tidak berkonflik saat disuntikkan Referer nanti
     })
     return session
 
