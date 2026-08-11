@@ -32,22 +32,6 @@ PAT = os.environ.get("PAT_TOKEN")
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 
 # ============================================================
-# HEADER LENGKAP (seperti browser)
-# ============================================================
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1',
-    'Sec-Fetch-Dest': 'document',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'none',
-    'Sec-Fetch-User': '?1',
-}
-
-# ============================================================
 # VALIDASI
 # ============================================================
 if not PAT:
@@ -73,38 +57,76 @@ except Exception as e:
     sys.exit(1)
 
 # ============================================================
-# EKSTRAK DOMAIN DARI URL (pakai requests biasa)
+# BUAT SESSION DENGAN HEADER LENGKAP + COOKIE
+# ============================================================
+def create_session():
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0',
+    })
+    return session
+
+# ============================================================
+# EKSTRAK DOMAIN DARI URL (dengan session & cookie)
 # ============================================================
 def extract_domain(page_url, retries=3):
-    session = requests.Session()
-    session.headers.update(HEADERS)
+    # Parse domain utama untuk referer
+    parsed = urlparse(page_url)
+    base_url = f"{parsed.scheme}://{parsed.netloc}"
+
+    session = create_session()
+
+    # Langkah 1: Kunjungi halaman utama untuk mendapatkan cookie
+    try:
+        print(f"  🍪 Mengambil cookie dari {base_url}...")
+        session.get(base_url, timeout=10)
+    except Exception as e:
+        print(f"  ⚠️ Gagal ambil cookie: {e}")
+
+    # Langkah 2: Akses URL target dengan referer
+    session.headers.update({'Referer': base_url})
+
     for attempt in range(retries):
         try:
             print(f"  📡 Mencoba {page_url} (percobaan {attempt+1}/{retries})...")
             resp = session.get(page_url, timeout=20, allow_redirects=True)
             print(f"     Status: {resp.status_code}")
+
             if resp.status_code == 403:
-                print("     ⚠️ 403 Forbidden - mungkin perlu header tambahan")
-                # Coba lagi dengan header berbeda (misal tanpa 'Accept-Encoding')
-                if attempt == retries-1:
+                print("     ⚠️ 403 - coba refresh cookie...")
+                # Refresh cookie dengan kunjungi ulang halaman utama
+                session.get(base_url, timeout=10)
+                if attempt < retries - 1:
+                    time.sleep(2)
+                    continue
+                else:
                     break
-                time.sleep(3)
-                continue
+
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, "html.parser")
             player = soup.find("div", id="player-embed")
             if not player:
-                print(f"⚠️ Tidak ditemukan div#player-embed")
+                print("⚠️ Tidak ditemukan div#player-embed")
                 return None
             iframe = player.find("iframe")
             if not iframe or not iframe.get("src"):
-                print(f"⚠️ Tidak ditemukan iframe")
+                print("⚠️ Tidak ditemukan iframe")
                 return None
             src = iframe["src"]
-            parsed = urlparse(src)
-            domain = parsed.netloc
+            parsed_src = urlparse(src)
+            domain = parsed_src.netloc
             if not domain:
-                print(f"⚠️ Domain kosong")
+                print("⚠️ Domain kosong")
                 return None
             return domain
         except requests.exceptions.RequestException as e:
