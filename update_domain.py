@@ -241,7 +241,7 @@ def update_sqlite_db(db_path, old_str, new_str, label=""):
         print(f"  ⚠️ Gagal update DB {db_path}: {e}")
 
 # ============================================================
-# FUNGSI UPDATE FILE TEKS
+# FUNGSI UPDATE FILE TEKS (DIPERBARUI)
 # ============================================================
 def update_text_file(filepath, old_d, new_d, old_b, new_b):
     try:
@@ -249,12 +249,25 @@ def update_text_file(filepath, old_d, new_d, old_b, new_b):
             content = f.read()
     except:
         return False
-    new_content = re.sub(re.escape(old_d), new_d, content, flags=re.IGNORECASE)
+        
+    new_content = content
+
+    # 1. Ganti domain normal (contoh: domainlama.space -> domainbaru.guru)
+    new_content = re.sub(re.escape(old_d), new_d, new_content, flags=re.IGNORECASE)
+
+    # 2. Ganti domain ber-backslash untuk string Regex (contoh: domainlama\.space -> domainbaru\.guru)
+    old_d_escaped = old_d.replace('.', r'\.')
+    new_d_escaped = new_d.replace('.', r'\.')
+    new_content = re.sub(re.escape(old_d_escaped), new_d_escaped, new_content, flags=re.IGNORECASE)
+
+    # 3. Ganti base (contoh: domainlama -> domainbaru)
     new_content = re.sub(re.escape(old_b), new_b, new_content, flags=re.IGNORECASE)
+
     if new_content != content:
         with open(filepath, 'w', encoding='utf-8') as f:
             f.write(new_content)
         return True
+        
     return False
 
 # ============================================================
